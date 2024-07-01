@@ -1316,9 +1316,10 @@ export class Map extends Camera {
      *
      * @param type - The event type to listen for. Events compatible with the optional `layerId` parameter are triggered
      * when the cursor enters a visible portion of the specified layer from outside that layer or outside the map canvas.
-     * @param layer - The ID of a style layer or a listener if no ID is provided. Event will only be triggered if its location
-     * is within a visible feature in this layer. The event will have a `features` property containing
-     * an array of the matching features. If `layer` is not supplied, the event will not have a `features` property.
+     * @param layer - The ID of a style layer, an array of style layer IDs, or a listener if no IDs are provided. Event
+     * will only be triggered if its location is within a visible feature in this layer. The event will have a
+     * `features` property containing an array of the matching features. If `layer` is not supplied, the event will not
+     * have a `features` property.
      * Please note that many event types are not compatible with the optional `layer` parameter.
      * @param listener - The function to be called when the event is fired.
      * @example
@@ -1363,7 +1364,7 @@ export class Map extends Camera {
      */
     on<T extends keyof MapLayerEventType>(
         type: T,
-        layer: string,
+        layer: string | string[],
         listener: (ev: MapLayerEventType[T] & Object) => void,
     ): Map;
     /**
@@ -1380,19 +1381,23 @@ export class Map extends Camera {
      * @param listener - The listener callback.
      */
     on(type: keyof MapEventType | string, listener: Listener): this;
-    on(type: keyof MapEventType | string, layerIdOrListener: string | Listener, listener?: Listener): this {
+    on(type: keyof MapEventType | string, layerIdOrListener: string | string[] | Listener, listener?: Listener): this {
         if (listener === undefined) {
             return super.on(type, layerIdOrListener as Listener);
         }
 
-        const delegatedListener = this._createDelegatedListener(type, layerIdOrListener as string, listener);
+        const layers = (Array.isArray(layerIdOrListener) ? layerIdOrListener : [layerIdOrListener]) as string[];
 
-        this._delegatedListeners = this._delegatedListeners || {};
-        this._delegatedListeners[type] = this._delegatedListeners[type] || [];
-        this._delegatedListeners[type].push(delegatedListener);
+        for (const layer of layers) {
+            const delegatedListener = this._createDelegatedListener(type, layer, listener);
 
-        for (const event in delegatedListener.delegates) {
-            this.on(event, delegatedListener.delegates[event]);
+            this._delegatedListeners = this._delegatedListeners || {};
+            this._delegatedListeners[type] = this._delegatedListeners[type] || [];
+            this._delegatedListeners[type].push(delegatedListener);
+
+            for (const event in delegatedListener.delegates) {
+                this.on(event, delegatedListener.delegates[event]);
+            }
         }
 
         return this;
@@ -1408,15 +1413,15 @@ export class Map extends Camera {
      * a visible portion of the specified layer from outside that layer or outside the map canvas. `mouseleave`
      * and `mouseout` events are triggered when the cursor leaves a visible portion of the specified layer, or leaves
      * the map canvas.
-     * @param layer - The ID of a style layer or a listener if no ID is provided. Only events whose location is within a visible
-     * feature in this layer will trigger the listener. The event will have a `features` property containing
-     * an array of the matching features.
+     * @param layer - The ID of a style layer, an array of style layer IDs, or a listener if no IDs are provided.
+     * Only events whose location is within a visible feature in this layer will trigger the listener. The event will
+     * have a `features` property containing an array of the matching features.
      * @param listener - The function to be called when the event is fired.
      * @returns `this` if listener is provided, promise otherwise to allow easier usage of async/await
      */
     once<T extends keyof MapLayerEventType>(
         type: T,
-        layer: string,
+        layer: string | string[],
         listener?: (ev: MapLayerEventType[T] & Object) => void,
     ): this | Promise<MapLayerEventType[T] & Object>;
     /**
@@ -1433,16 +1438,20 @@ export class Map extends Camera {
      * @param listener - The listener callback.
      */
     once(type: keyof MapEventType | string, listener?: Listener): this | Promise<any>;
-    once(type: keyof MapEventType | string, layerIdOrListener: string | Listener, listener?: Listener): this | Promise<any> {
+    once(type: keyof MapEventType | string, layerIdOrListener: string | string[] | Listener, listener?: Listener): this | Promise<any> {
 
         if (listener === undefined) {
             return super.once(type, layerIdOrListener as Listener);
         }
 
-        const delegatedListener = this._createDelegatedListener(type, layerIdOrListener as string, listener);
+        const layers = (Array.isArray(layerIdOrListener) ? layerIdOrListener : [layerIdOrListener]) as string[];
 
-        for (const event in delegatedListener.delegates) {
-            this.once(event, delegatedListener.delegates[event]);
+        for (const layer of layers) {
+            const delegatedListener = this._createDelegatedListener(type, layer, listener);
+
+            for (const event in delegatedListener.delegates) {
+                this.once(event, delegatedListener.delegates[event]);
+            }
         }
 
         return this;
@@ -1453,12 +1462,12 @@ export class Map extends Camera {
      *
      * @event
      * @param type - The event type previously used to install the listener.
-     * @param layer - The layer ID or listener previously used to install the listener.
+     * @param layer - The layer ID or an array of layer IDs, or the listener previously used to install the listener.
      * @param listener - The function previously installed as a listener.
      */
     off<T extends keyof MapLayerEventType>(
         type: T,
-        layer: string,
+        layer: string | string[],
         listener: (ev: MapLayerEventType[T] & Object) => void,
     ): this;
     /**
@@ -1475,27 +1484,31 @@ export class Map extends Camera {
      * @param listener - The function previously installed as a listener.
      */
     off(type: keyof MapEventType | string, listener: Listener): this;
-    off(type: keyof MapEventType | string, layerIdOrListener: string | Listener, listener?: Listener): this {
+    off(type: keyof MapEventType | string, layerIdOrListener: string | string[] | Listener, listener?: Listener): this {
         if (listener === undefined) {
             return super.off(type, layerIdOrListener as Listener);
         }
 
-        const removeDelegatedListener = (delegatedListeners) => {
-            const listeners = delegatedListeners[type];
-            for (let i = 0; i < listeners.length; i++) {
-                const delegatedListener = listeners[i];
-                if (delegatedListener.layer === layerIdOrListener && delegatedListener.listener === listener) {
-                    for (const event in delegatedListener.delegates) {
-                        this.off(((event as any)), delegatedListener.delegates[event]);
-                    }
-                    listeners.splice(i, 1);
-                    return this;
-                }
-            }
-        };
+        const layers = (Array.isArray(layerIdOrListener) ? layerIdOrListener : [layerIdOrListener]) as string[];
 
-        if (this._delegatedListeners && this._delegatedListeners[type]) {
-            removeDelegatedListener(this._delegatedListeners);
+        for (const layer of layers) {
+            const removeDelegatedListener = (delegatedListeners) => {
+                const listeners = delegatedListeners[type];
+                for (let i = 0; i < listeners.length; i++) {
+                    const delegatedListener = listeners[i];
+                    if (delegatedListener.layer === layer && delegatedListener.listener === listener) {
+                        for (const event in delegatedListener.delegates) {
+                            this.off(((event as any)), delegatedListener.delegates[event]);
+                        }
+                        listeners.splice(i, 1);
+                        return this;
+                    }
+                }
+            };
+
+            if (this._delegatedListeners && this._delegatedListeners[type]) {
+                removeDelegatedListener(this._delegatedListeners);
+            }
         }
 
         return this;

@@ -322,6 +322,20 @@ describe('map events', () => {
         expect(spy).toHaveBeenCalledTimes(1);
     });
 
+    test('Map#once applies event handler to multiple layers', () => {
+        const map = createMap();
+
+        jest.spyOn(map, 'getLayer').mockReturnValue({} as StyleLayer);
+        jest.spyOn(map, 'queryRenderedFeatures').mockReturnValue([{} as MapGeoJSONFeature]);
+
+        const spy = jest.fn();
+
+        map.once('mousemove', ['layer1', 'layer2'], spy);
+        simulate.mousemove(map.getCanvas());
+
+        expect(spy).toHaveBeenCalledTimes(2);
+    });
+
     (['mouseenter', 'mouseover'] as (keyof MapLayerEventType)[]).forEach((event) => {
         test(`Map#on ${event} does not fire if the specified layer does not exist`, () => {
             const map = createMap();
@@ -456,6 +470,20 @@ describe('map events', () => {
             expect(spyB).toHaveBeenCalledTimes(1);
         });
 
+        test('Map#on applies event handler to multiple layers', () => {
+            const map = createMap();
+
+            jest.spyOn(map, 'getLayer').mockReturnValue({} as StyleLayer);
+            jest.spyOn(map, 'queryRenderedFeatures').mockReturnValue([{} as MapGeoJSONFeature]);
+
+            const spy = jest.fn();
+
+            map.on(event, ['layer1', 'layer2'], spy);
+            simulate.mousemove(map.getCanvas());
+
+            expect(spy).toHaveBeenCalledTimes(2);
+        });
+
         test(`Map#off ${event} removes a delegated event listener`, () => {
             const map = createMap();
 
@@ -492,6 +520,21 @@ describe('map events', () => {
             simulate.mousemove(map.getCanvas());
 
             expect(spy).toHaveBeenCalledTimes(1);
+        });
+
+        test('Map#off removes event handlers from multiple layers', () => {
+            const map = createMap();
+
+            jest.spyOn(map, 'getLayer').mockReturnValue({} as StyleLayer);
+            jest.spyOn(map, 'queryRenderedFeatures').mockReturnValue([{} as MapGeoJSONFeature]);
+
+            const spy = jest.fn();
+
+            map.on(event, ['layer1', 'layer2'], spy);
+            map.off(event, ['layer1', 'layer2'], spy);
+            simulate.mousemove(map.getCanvas());
+
+            expect(spy).toHaveBeenCalledTimes(0);
         });
 
         test(`Map#off ${event} distinguishes distinct listeners`, () => {
