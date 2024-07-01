@@ -530,7 +530,7 @@ describe('map events', () => {
             expect(spy).toHaveBeenCalledTimes(1);
         });
 
-        test('Map#off removes event handlers from multiple layers', () => {
+        test(`Map#off ${event} removes event handlers from multiple layers`, () => {
             const map = createMap();
 
             jest.spyOn(map, 'getLayer').mockReturnValue({} as StyleLayer);
@@ -545,7 +545,7 @@ describe('map events', () => {
             expect(spy).toHaveBeenCalledTimes(0);
         });
 
-        test('Map#off removes single layer in event handler with multiple layers', () => {
+        test(`Map#off ${event} removes single layer in event handler with multiple layers`, () => {
             const map = createMap();
 
             jest.spyOn(map, 'getLayer').mockReturnValue({} as StyleLayer);
