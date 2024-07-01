@@ -397,6 +397,16 @@ const defaultOptions: Readonly<Partial<MapOptions>> = {
     cancelPendingTileRequestsWhileZooming: true
 };
 
+interface DelegatedListener {
+    layers: string[];
+    listener: Listener;
+    delegates: {[type in keyof MapEventType]?: (e: any) => void};
+}
+
+type DelegatedListeners = {
+    [k in keyof MapEventType]?: DelegatedListener[];
+};
+
 /**
  * The `Map` object represents the map on your page. It exposes methods
  * and properties that enable you to programmatically change the map,
@@ -462,7 +472,7 @@ export class Map extends Camera {
     _antialias: boolean;
     _refreshExpiredTiles: boolean;
     _hash: Hash;
-    _delegatedListeners: any;
+    _delegatedListeners: DelegatedListeners = {};
     _fadeDuration: number;
     _crossSourceCollisions: boolean;
     _crossFadingFactor = 1;
@@ -1204,15 +1214,14 @@ export class Map extends Camera {
         return this._rotating || this.handlers?.isRotating();
     }
 
-    _createDelegatedListener(type: keyof MapEventType | string, layerId: string, listener: Listener): {
-        layer: string;
-        listener: Listener;
-        delegates: {[type in keyof MapEventType]?: (e: any) => void};
-    } {
+    _createDelegatedListener(type: keyof MapEventType | string, layers: string[], listener: Listener): DelegatedListener {
+        // Make a copy so that we can safely remove layers from the listener in future
+        layers = [...layers];
         if (type === 'mouseenter' || type === 'mouseover') {
             let mousein = false;
             const mousemove = (e) => {
-                const features = this.getLayer(layerId) ? this.queryRenderedFeatures(e.point, {layers: [layerId]}) : [];
+                const validLayers = layers.filter((id) => this.getLayer(id));
+                const features = validLayers.length ? this.queryRenderedFeatures(e.point, {layers: validLayers}) : [];
                 if (!features.length) {
                     mousein = false;
                 } else if (!mousein) {
@@ -1223,11 +1232,12 @@ export class Map extends Camera {
             const mouseout = () => {
                 mousein = false;
             };
-            return {layer: layerId, listener, delegates: {mousemove, mouseout}};
+            return {layers, listener, delegates: {mousemove, mouseout}};
         } else if (type === 'mouseleave' || type === 'mouseout') {
             let mousein = false;
             const mousemove = (e) => {
-                const features = this.getLayer(layerId) ? this.queryRenderedFeatures(e.point, {layers: [layerId]}) : [];
+                const validLayers = layers.filter((id) => this.getLayer(id));
+                const features = validLayers.length ? this.queryRenderedFeatures(e.point, {layers: validLayers}) : [];
                 if (features.length) {
                     mousein = true;
                 } else if (mousein) {
@@ -1241,10 +1251,11 @@ export class Map extends Camera {
                     listener.call(this, new MapMouseEvent(type, this, e.originalEvent));
                 }
             };
-            return {layer: layerId, listener, delegates: {mousemove, mouseout}};
+            return {layers, listener, delegates: {mousemove, mouseout}};
         } else {
             const delegate = (e) => {
-                const features = this.getLayer(layerId) ? this.queryRenderedFeatures(e.point, {layers: [layerId]}) : [];
+                const validLayers = layers.filter((id) => this.getLayer(id));
+                const features = validLayers.length ? this.queryRenderedFeatures(e.point, {layers: validLayers}) : [];
                 if (features.length) {
                     // Here we need to mutate the original event, so that preventDefault works as expected.
                     e.features = features;
@@ -1252,7 +1263,7 @@ export class Map extends Camera {
                     delete e.features;
                 }
             };
-            return {layer: layerId, listener, delegates: {[type]: delegate}};
+            return {layers, listener, delegates: {[type]: delegate}};
         }
     }
 
@@ -1388,16 +1399,13 @@ export class Map extends Camera {
 
         const layers = (Array.isArray(layerIdOrListener) ? layerIdOrListener : [layerIdOrListener]) as string[];
 
-        for (const layer of layers) {
-            const delegatedListener = this._createDelegatedListener(type, layer, listener);
+        const delegatedListener = this._createDelegatedListener(type, layers, listener);
 
-            this._delegatedListeners = this._delegatedListeners || {};
-            this._delegatedListeners[type] = this._delegatedListeners[type] || [];
-            this._delegatedListeners[type].push(delegatedListener);
+        this._delegatedListeners[type] = this._delegatedListeners[type] || [];
+        this._delegatedListeners[type].push(delegatedListener);
 
-            for (const event in delegatedListener.delegates) {
-                this.on(event, delegatedListener.delegates[event]);
-            }
+        for (const event in delegatedListener.delegates) {
+            this.on(event, delegatedListener.delegates[event]);
         }
 
         return this;
@@ -1446,12 +1454,10 @@ export class Map extends Camera {
 
         const layers = (Array.isArray(layerIdOrListener) ? layerIdOrListener : [layerIdOrListener]) as string[];
 
-        for (const layer of layers) {
-            const delegatedListener = this._createDelegatedListener(type, layer, listener);
+        const delegatedListener = this._createDelegatedListener(type, layers, listener);
 
-            for (const event in delegatedListener.delegates) {
-                this.once(event, delegatedListener.delegates[event]);
-            }
+        for (const event in delegatedListener.delegates) {
+            this.once(event, delegatedListener.delegates[event]);
         }
 
         return this;
@@ -1491,23 +1497,26 @@ export class Map extends Camera {
 
         const layers = (Array.isArray(layerIdOrListener) ? layerIdOrListener : [layerIdOrListener]) as string[];
 
-        for (const layer of layers) {
-            const removeDelegatedListener = (delegatedListeners) => {
-                const listeners = delegatedListeners[type];
-                for (let i = 0; i < listeners.length; i++) {
-                    const delegatedListener = listeners[i];
-                    if (delegatedListener.layer === layer && delegatedListener.listener === listener) {
+        const removeAll = (target: string[], toRemove: string[]) => {
+            for (let i = 0; i < target.length; i++) {
+                while (toRemove.includes(target[i])) {
+                    target.splice(i, 1);
+                }
+            }
+        };
+
+        if (this._delegatedListeners[type]) {
+            const listeners = this._delegatedListeners[type];
+            for (let i = 0; i < listeners.length; i++) {
+                const delegatedListener = listeners[i];
+                if (delegatedListener.listener === listener) {
+                    removeAll(delegatedListener.layers, layers);
+                    if (!delegatedListener.layers.length) {
                         for (const event in delegatedListener.delegates) {
                             this.off(((event as any)), delegatedListener.delegates[event]);
                         }
-                        listeners.splice(i, 1);
-                        return this;
                     }
                 }
-            };
-
-            if (this._delegatedListeners && this._delegatedListeners[type]) {
-                removeDelegatedListener(this._delegatedListeners);
             }
         }
 

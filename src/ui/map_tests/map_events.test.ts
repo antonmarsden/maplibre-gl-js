@@ -325,15 +325,19 @@ describe('map events', () => {
     test('Map#once applies event handler to multiple layers', () => {
         const map = createMap();
 
-        jest.spyOn(map, 'getLayer').mockReturnValue({} as StyleLayer);
-        jest.spyOn(map, 'queryRenderedFeatures').mockReturnValue([{} as MapGeoJSONFeature]);
+        const spyGetLayer = jest.spyOn(map, 'getLayer').mockReturnValue({} as StyleLayer);
+        const spyQuery = jest.spyOn(map, 'queryRenderedFeatures').mockReturnValue([{} as MapGeoJSONFeature]);
 
         const spy = jest.fn();
 
         map.once('mousemove', ['layer1', 'layer2'], spy);
         simulate.mousemove(map.getCanvas());
 
-        expect(spy).toHaveBeenCalledTimes(2);
+        expect(spy).toHaveBeenCalledTimes(1);
+        expect(spyGetLayer).toHaveBeenCalledTimes(2);
+        expect(spyGetLayer).toHaveBeenNthCalledWith(1, 'layer1');
+        expect(spyGetLayer).toHaveBeenNthCalledWith(2, 'layer2');
+        expect(spyQuery).toHaveBeenCalledWith({x: 0, y: 0}, {layers: ['layer1', 'layer2']});
     });
 
     (['mouseenter', 'mouseover'] as (keyof MapLayerEventType)[]).forEach((event) => {
@@ -470,18 +474,22 @@ describe('map events', () => {
             expect(spyB).toHaveBeenCalledTimes(1);
         });
 
-        test('Map#on applies event handler to multiple layers', () => {
+        test(`Map#on ${event} applies event handler to multiple layers`, () => {
             const map = createMap();
 
-            jest.spyOn(map, 'getLayer').mockReturnValue({} as StyleLayer);
-            jest.spyOn(map, 'queryRenderedFeatures').mockReturnValue([{} as MapGeoJSONFeature]);
+            const spyGetLayer = jest.spyOn(map, 'getLayer').mockReturnValue({} as StyleLayer);
+            const spyQuery = jest.spyOn(map, 'queryRenderedFeatures').mockReturnValue([{} as MapGeoJSONFeature]);
 
             const spy = jest.fn();
 
-            map.on(event, ['layer1', 'layer2'], spy);
+            map.once(event, ['layer1', 'layer2'], spy);
             simulate.mousemove(map.getCanvas());
 
-            expect(spy).toHaveBeenCalledTimes(2);
+            expect(spy).toHaveBeenCalledTimes(1);
+            expect(spyGetLayer).toHaveBeenCalledTimes(2);
+            expect(spyGetLayer).toHaveBeenNthCalledWith(1, 'layer1');
+            expect(spyGetLayer).toHaveBeenNthCalledWith(2, 'layer2');
+            expect(spyQuery).toHaveBeenCalledWith({x: 0, y: 0}, {layers: ['layer1', 'layer2']});
         });
 
         test(`Map#off ${event} removes a delegated event listener`, () => {
@@ -535,6 +543,22 @@ describe('map events', () => {
             simulate.mousemove(map.getCanvas());
 
             expect(spy).toHaveBeenCalledTimes(0);
+        });
+
+        test('Map#off removes single layer in event handler with multiple layers', () => {
+            const map = createMap();
+
+            jest.spyOn(map, 'getLayer').mockReturnValue({} as StyleLayer);
+            const spyQuery = jest.spyOn(map, 'queryRenderedFeatures').mockReturnValue([{} as MapGeoJSONFeature]);
+
+            const spy = jest.fn();
+
+            map.on(event, ['layer1', 'layer2'], spy);
+            map.off(event, 'layer1', spy);
+            simulate.mousemove(map.getCanvas());
+
+            expect(spy).toHaveBeenCalledTimes(1);
+            expect(spyQuery).toHaveBeenCalledWith({x: 0, y: 0}, {layers: ['layer2']});
         });
 
         test(`Map#off ${event} distinguishes distinct listeners`, () => {
